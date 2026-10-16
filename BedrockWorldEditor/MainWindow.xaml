@@ -3,9 +3,46 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Bedrock World Editor" Height="680" Width="1020"
         Background="#252A30" WindowStartupLocation="CenterScreen"
-        Loaded="Window_Loaded" FontFamily="Segoe UI">
+        Loaded="Window_Loaded" Closing="Window_Closing" PreviewKeyDown="Window_PreviewKeyDown" FontFamily="Segoe UI">
 
     <Window.Resources>
+        <!-- Clean ScrollViewer-Backed ListBox & TreeView ControlTemplates with Proper Scrollbar Support -->
+        <Style x:Key="UmeCleanListBoxStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBox">
+                        <ScrollViewer Padding="0" Margin="0" Focusable="False" Background="Transparent"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
+                            <ItemsPresenter Margin="0"/>
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="UmeCleanTreeViewStyle" TargetType="TreeView">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeView">
+                        <ScrollViewer Padding="0" Margin="0" Focusable="False" Background="Transparent"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
+                            <ItemsPresenter Margin="0"/>
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Sidebar Button Style -->
         <Style x:Key="UmeNavButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -47,6 +84,162 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="ToolTipService.InitialShowDelay" Value="150"/>
         </Style>
+
+        <!-- UME 22px ListBoxItem Style for Worlds & Players -->
+        <Style x:Key="UmeListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#111111"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                Height="22"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#F3F4F6"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="False"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#E2E5E9"/>
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True"/>
+                                    <Condition Property="IsMouseOver" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#CBE4F9"/>
+                                <Setter Property="Foreground" Value="#000000"/>
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#8CC3F2"/>
+                                <Setter Property="Foreground" Value="#000000"/>
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True"/>
+                                    <Condition Property="BorderThickness" Value="1"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#8CC3F2"/>
+                                <Setter Property="Foreground" Value="#000000"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- UME Chevron Expander Button (> / v) -->
+        <Style x:Key="UmeTreeToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="#01FFFFFF" Width="16" Height="16">
+                            <Path x:Name="ExpandPath"
+                                  Stroke="#4A5568"
+                                  StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="M 5,4 L 9,8 L 5,12"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ExpandPath" Property="Data" Value="M 4,6 L 8,10 L 12,6"/>
+                                <Setter TargetName="ExpandPath" Property="Stroke" Value="#1F2933"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ExpandPath" Property="Stroke" Value="#000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Full-Width 22px UME TreeViewItem Style -->
+        <Style x:Key="UmeTreeViewItemStyle" TargetType="TreeViewItem">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#1F2933"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <StackPanel>
+                            <Border x:Name="RowBorder"
+                                    Background="{TemplateBinding Background}"
+                                    Height="22"
+                                    HorizontalAlignment="Stretch">
+                                <Grid Margin="{TemplateBinding Padding}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander"
+                                                  Grid.Column="0"
+                                                  Style="{StaticResource UmeTreeToggleStyle}"
+                                                  ClickMode="Press"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                    <ContentPresenter x:Name="PART_Header"
+                                                      Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      VerticalAlignment="Center"
+                                                      HorizontalAlignment="Left"/>
+                                </Grid>
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition SourceName="RowBorder" Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="BorderThickness" Value="0"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="RowBorder" Property="Background" Value="#E2E5E9"/>
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition SourceName="RowBorder" Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="BorderThickness" Value="1"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="RowBorder" Property="Background" Value="#8CC3F2"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -82,8 +275,29 @@
                 <!-- Account Selector in Header -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
                     <TextBlock Text="Account:" Foreground="#9AA5B1" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0"/>
-                    <ComboBox x:Name="ComboAccounts" Width="220" Height="26" VerticalAlignment="Center"
-                              SelectionChanged="ComboAccounts_SelectionChanged" FontSize="12"/>
+                    <Grid Width="230" Height="26" VerticalAlignment="Center">
+                        <ComboBox x:Name="ComboAccounts"
+                                  SelectionChanged="ComboAccounts_SelectionChanged"
+                                  FontSize="12"
+                                  VerticalContentAlignment="Center"/>
+                        <TextBlock Text="Select an account..."
+                                   Foreground="#616E7C"
+                                   FontSize="12"
+                                   Margin="8,0,24,0"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedIndex, ElementName=ComboAccounts}" Value="-1">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>
@@ -115,7 +329,7 @@
                             </Grid.ColumnDefinitions>
 
                             <Button x:Name="BtnSave" Grid.Column="0" Click="BtnSave_Click" IsEnabled="False"
-                                    ToolTip="Save Changes" Background="#2B3138" BorderBrush="#4C5663" BorderThickness="1"
+                                    ToolTip="Save Changes (Ctrl+S)" Background="#2B3138" BorderBrush="#4C5663" BorderThickness="1"
                                     Cursor="Hand" Margin="0,0,6,0">
                                 <TextBlock Text="💾" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Button>
@@ -136,9 +350,38 @@
                             <TextBlock Text="🌍" Foreground="#CBD2D9" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
                             <TextBlock Text="Worlds" Foreground="#E4E7EB" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <ListBox x:Name="WorldListBox" Background="#FFFFFF" Foreground="#1F2933" BorderBrush="#1E2328"
-                                 BorderThickness="1" SelectionChanged="WorldListBox_SelectionChanged" FontSize="12.5"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                        <Border BorderBrush="#1E2328" BorderThickness="1" ClipToBounds="True">
+                            <Border.Background>
+                                <DrawingBrush Viewport="0,0,1,44" ViewportUnits="Absolute" TileMode="Tile">
+                                    <DrawingBrush.Transform>
+                                        <TranslateTransform x:Name="WorldStripeTransform" Y="0"/>
+                                    </DrawingBrush.Transform>
+                                    <DrawingBrush.Drawing>
+                                        <DrawingGroup>
+                                            <GeometryDrawing Brush="#FFFFFF">
+                                                <GeometryDrawing.Geometry>
+                                                    <RectangleGeometry Rect="0,0,1,22"/>
+                                                </GeometryDrawing.Geometry>
+                                            </GeometryDrawing>
+                                            <GeometryDrawing Brush="#F3F4F6">
+                                                <GeometryDrawing.Geometry>
+                                                    <RectangleGeometry Rect="0,22,1,22"/>
+                                                </GeometryDrawing.Geometry>
+                                            </GeometryDrawing>
+                                        </DrawingGroup>
+                                    </DrawingBrush.Drawing>
+                                </DrawingBrush>
+                            </Border.Background>
+                            <ListBox x:Name="WorldListBox"
+                                     Style="{StaticResource UmeCleanListBoxStyle}"
+                                     AlternationCount="2"
+                                     ItemContainerStyle="{StaticResource UmeListBoxItemStyle}"
+                                     SelectionChanged="WorldListBox_SelectionChanged"
+                                     ScrollViewer.ScrollChanged="WorldListBox_ScrollChanged"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="False"/>
+                        </Border>
                     </DockPanel>
 
                     <!-- Row 2: Players List -->
@@ -148,27 +391,68 @@
                             <TextBlock Text="Players" Foreground="#E4E7EB" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <ListBox x:Name="PlayerListBox" Background="#FFFFFF" Foreground="#1F2933" BorderBrush="#1E2328"
-                                 BorderThickness="1" SelectionChanged="PlayerListBox_SelectionChanged" FontSize="12.5"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Auto">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Margin="1,2">
-                                        <Border Width="16" Height="16" Background="#B5845B" BorderBrush="#3B2716" BorderThickness="1" Margin="0,0,7,0" VerticalAlignment="Center">
-                                            <Grid>
-                                                <Rectangle Fill="#4A311C" Height="5" VerticalAlignment="Top"/>
-                                                <Rectangle Fill="#FFFFFF" Width="3" Height="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,1,0,0"/>
-                                                <Rectangle Fill="#4B3A96" Width="2" Height="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,1,0,0"/>
-                                                <Rectangle Fill="#FFFFFF" Width="3" Height="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,2,0"/>
-                                                <Rectangle Fill="#4B3A96" Width="2" Height="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,2,0"/>
-                                                <Rectangle Fill="#7A4930" Width="4" Height="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-                                            </Grid>
-                                        </Border>
-                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" Foreground="#111111"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                        <Border BorderBrush="#1E2328" BorderThickness="1" ClipToBounds="True">
+                            <Border.Background>
+                                <DrawingBrush Viewport="0,0,1,44" ViewportUnits="Absolute" TileMode="Tile">
+                                    <DrawingBrush.Transform>
+                                        <TranslateTransform x:Name="PlayerStripeTransform" Y="0"/>
+                                    </DrawingBrush.Transform>
+                                    <DrawingBrush.Drawing>
+                                        <DrawingGroup>
+                                            <GeometryDrawing Brush="#FFFFFF">
+                                                <GeometryDrawing.Geometry>
+                                                    <RectangleGeometry Rect="0,0,1,22"/>
+                                                </GeometryDrawing.Geometry>
+                                            </GeometryDrawing>
+                                            <GeometryDrawing Brush="#F3F4F6">
+                                                <GeometryDrawing.Geometry>
+                                                    <RectangleGeometry Rect="0,22,1,22"/>
+                                                </GeometryDrawing.Geometry>
+                                            </GeometryDrawing>
+                                        </DrawingGroup>
+                                    </DrawingBrush.Drawing>
+                                </DrawingBrush>
+                            </Border.Background>
+                            <ListBox x:Name="PlayerListBox"
+                                     Style="{StaticResource UmeCleanListBoxStyle}"
+                                     AlternationCount="2"
+                                     SelectionMode="Extended"
+                                     ItemContainerStyle="{StaticResource UmeListBoxItemStyle}"
+                                     SelectionChanged="PlayerListBox_SelectionChanged"
+                                     ScrollViewer.ScrollChanged="PlayerListBox_ScrollChanged"
+                                     PreviewMouseRightButtonDown="PlayerListBox_PreviewMouseRightButtonDown"
+                                     KeyDown="PlayerListBox_KeyDown"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.CanContentScroll="False">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu x:Name="PlayerContextMenu" Opened="PlayerContextMenu_Opened" Closed="PlayerContextMenu_Closed" Background="#F8F9FA" BorderBrush="#A0AAB4" FontSize="12.5">
+                                        <MenuItem x:Name="MenuDeletePlayer" Header="Delete" InputGestureText="Del" Click="MenuDeletePlayer_Click">
+                                            <MenuItem.Icon>
+                                                <TextBlock Text="❌" Foreground="#D64545" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="15" Height="15" Background="#B5845B" BorderBrush="#3B2716" BorderThickness="1" Margin="0,0,7,0" VerticalAlignment="Center">
+                                                <Grid>
+                                                    <Rectangle Fill="#4A311C" Height="4.5" VerticalAlignment="Top"/>
+                                                    <Rectangle Fill="#FFFFFF" Width="3" Height="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,1,0,0"/>
+                                                    <Rectangle Fill="#4B3A96" Width="2" Height="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,1,0,0"/>
+                                                    <Rectangle Fill="#FFFFFF" Width="3" Height="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,2,0"/>
+                                                    <Rectangle Fill="#4B3A96" Width="2" Height="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,2,0"/>
+                                                    <Rectangle Fill="#7A4930" Width="4" Height="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,1.5"/>
+                                                </Grid>
+                                            </Border>
+                                            <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" Foreground="#111111"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
                     </DockPanel>
 
                     <!-- Row 3: World Settings (level.dat) & Quick Actions -->
@@ -240,7 +524,7 @@
                                 <TextBlock Text="B" Foreground="#D64545" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Short Tag">
-                                <TextBlock Text="S" Foreground="#E67E22" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="S" Foreground="#27AE60" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Int Tag">
                                 <TextBlock Text="I" Foreground="#2980B9" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -249,7 +533,7 @@
                                 <TextBlock Text="L" Foreground="#8E44AD" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Float Tag">
-                                <TextBlock Text="F" Foreground="#27AE60" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="F" Foreground="#9B59B6" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Double Tag">
                                 <TextBlock Text="D" Foreground="#16A085" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -290,18 +574,94 @@
                     </Grid>
                 </Border>
 
-                <!-- Row 1: NBT TreeView -->
-                <TreeView x:Name="NbtTreeView" Grid.Row="1" Background="#FFFFFF" BorderThickness="0" Padding="4,6"
-                          SelectedItemChanged="NbtTreeView_SelectedItemChanged"
-                          VirtualizingStackPanel.IsVirtualizing="True"
-                          VirtualizingStackPanel.VirtualizationMode="Recycling">
-                    <TreeView.ItemContainerStyle>
-                        <Style TargetType="TreeViewItem">
-                            <Setter Property="Padding" Value="3,2"/>
-                            <Setter Property="FontSize" Value="12.5"/>
-                        </Style>
-                    </TreeView.ItemContainerStyle>
-                </TreeView>
+                <!-- Row 1: Scroll-Synced Zebra Backdrop + Item-Backed TreeView -->
+                <Grid Grid.Row="1" ClipToBounds="True">
+                    <Grid.Background>
+                        <DrawingBrush Viewport="0,0,1,44" ViewportUnits="Absolute" TileMode="Tile">
+                            <DrawingBrush.Transform>
+                                <TranslateTransform x:Name="NbtStripeTransform" Y="0"/>
+                            </DrawingBrush.Transform>
+                            <DrawingBrush.Drawing>
+                                <DrawingGroup>
+                                    <GeometryDrawing Brush="#FFFFFF">
+                                        <GeometryDrawing.Geometry>
+                                            <RectangleGeometry Rect="0,0,1,22"/>
+                                        </GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                    <GeometryDrawing Brush="#F3F4F6">
+                                        <GeometryDrawing.Geometry>
+                                            <RectangleGeometry Rect="0,22,1,22"/>
+                                        </GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                </DrawingGroup>
+                            </DrawingBrush.Drawing>
+                        </DrawingBrush>
+                    </Grid.Background>
+
+                    <TreeView x:Name="NbtTreeView"
+                              Style="{StaticResource UmeCleanTreeViewStyle}"
+                              HorizontalContentAlignment="Stretch"
+                              SelectedItemChanged="NbtTreeView_SelectedItemChanged"
+                              TreeViewItem.Expanded="NbtTreeView_ItemExpandedOrCollapsed"
+                              TreeViewItem.Collapsed="NbtTreeView_ItemExpandedOrCollapsed"
+                              ScrollViewer.ScrollChanged="NbtTreeView_ScrollChanged"
+                              PreviewMouseLeftButtonDown="NbtTreeView_PreviewMouseLeftButtonDown"
+                              PreviewMouseMove="NbtTreeView_PreviewMouseMove"
+                              PreviewMouseLeftButtonUp="NbtTreeView_PreviewMouseLeftButtonUp"
+                              PreviewMouseRightButtonDown="NbtTreeView_PreviewMouseRightButtonDown"
+                              ItemContainerStyle="{StaticResource UmeTreeViewItemStyle}"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.CanContentScroll="False"
+                              VirtualizingStackPanel.IsVirtualizing="False">
+                        <TreeView.ContextMenu>
+                            <ContextMenu x:Name="NbtContextMenu" Opened="NbtContextMenu_Opened" Closed="NbtContextMenu_Closed" Background="#F8F9FA" BorderBrush="#A0AAB4" FontSize="12.5">
+                                <MenuItem x:Name="MenuUndo" Header="Undo" InputGestureText="Ctrl+Z" Click="MenuUndo_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="↩" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator x:Name="MenuUndoSeparator"/>
+                                <MenuItem x:Name="MenuCut" Header="Cut" InputGestureText="Ctrl+X" Click="MenuCut_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✂" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MenuCopy" Header="Copy" InputGestureText="Ctrl+C" Click="MenuCopy_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="📄" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MenuPaste" Header="Paste" InputGestureText="Ctrl+V" Click="MenuPaste_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MenuSelectAll" Header="Select All" InputGestureText="Ctrl+A" Click="MenuSelectAll_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="☑" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MenuDelete" Header="Delete" InputGestureText="Del" Click="MenuDelete_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="❌" Foreground="#D64545" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator x:Name="MenuMoveSeparator"/>
+                                <MenuItem x:Name="MenuMoveUp" Header="Move Up" Click="MenuMoveUp_Click">
+                                    <MenuItem.Icon>
+                                        <Path Data="M 2,9 L 7,4 L 12,9" Stroke="#52606D" StrokeThickness="1.8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MenuMoveDown" Header="Move Down" Click="MenuMoveDown_Click">
+                                    <MenuItem.Icon>
+                                        <Path Data="M 2,4 L 7,9 L 12,4" Stroke="#52606D" StrokeThickness="1.8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </TreeView.ContextMenu>
+                    </TreeView>
+                </Grid>
 
                 <!-- Row 2: Value Edit Bar -->
                 <Border Grid.Row="2" Background="#F5F7FA" BorderBrush="#D8E2EC" BorderThickness="0,1,0,0" Padding="12,0">

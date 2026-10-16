@@ -15,7 +15,7 @@ A fast, lock-free **Minecraft: Bedrock Edition** NBT & LevelDB world editor for 
 ### 🔓 Lock-Free LevelDB & `level.dat` Session Engine
 * **Zero Persistent File Locks:** Opens Bedrock's `db/` LevelDB database and `level.dat` for just a few milliseconds to cache entries into memory, then immediately releases all OS file handles.
 * **Seamless Multi-Target Switching:** Edit multiple players (`~local_player`, `player_server_*`) and `World Settings (level.dat)` in the same session without nagging popups. Each target remembers its own expanded tree branches, selection, scroll position, and 30-step `Ctrl+Z` undo history.
-* **Batch Save & UME Modals:** Commits all modified players, staged player deletions, and `level.dat` changes in a single batch when you click **Save World** (`Ctrl+S`), complete with UME's **Saving / Please wait...**, **Save complete**, and red **Error / The world could not be saved!** modal overlays.
+* **Batch Save:** Commits all modified players, staged player deletions, and `level.dat` changes in a single batch when you click **Save World** (`Ctrl+S`)
 
 ### 🛠️ Full NBT Editing & Creation Suite
 * **Interactive Top Toolbar:** Click any tag icon on the top bar to insert a new tag directly into the active container with inline naming (`[TextBox] [OK]`).
@@ -64,7 +64,7 @@ A fast, lock-free **Minecraft: Bedrock Edition** NBT & LevelDB world editor for 
 ### Building & Running
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/nieruuu19/BedrockWorldEditor.git](https://github.com/nieruuu19/BedrockWorldEditor.git)
+   git clone https://github.com/nieruuu19/BedrockWorldEditor.git
 2. Open `BedrockWorldEditor.sln` in **Visual Studio 2022+**.
 3. Set the solution platform to **`x64`**.
 4. **(Optional) Configure OpenXBL API Key:** Open `MainWindow.xaml.cs` and replace `XblApiKey` with your own OpenXBL key:

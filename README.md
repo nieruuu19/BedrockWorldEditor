@@ -83,7 +83,3 @@ private const string XblApiKey = "YOUR_OPENXBL_API_KEY_HERE";
 ## ⚠️ Usage Note
 
 While **Bedrock World Editor** uses a lock-free memory session so it never locks your world folder while browsing or editing, **Minecraft: Bedrock Edition** itself locks `db/` while you are actively loaded into a world. Always **Save & Quit to Title** in Minecraft before clicking **Save World** in the editor.
-
-```
-
-```

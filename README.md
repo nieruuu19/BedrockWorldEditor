@@ -64,7 +64,7 @@ A fast, lock-free **Minecraft: Bedrock Edition** NBT & LevelDB world editor for 
 ### Building & Running
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/nieruuu19/BedrockWorldEditor.git](https://github.com/nieruuu19/BedrockWorldEditor.git)
+   git clone https://github.com/nieruuu19/BedrockWorldEditor.git
 2. Open `BedrockWorldEditor.sln` in **Visual Studio 2022+**.
 3. Set the solution platform to **`x64`**.
 4. **(Optional) Configure OpenXBL API Key:** Open `MainWindow.xaml.cs` and replace `XblApiKey` with your own OpenXBL key:

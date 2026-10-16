@@ -33,7 +33,7 @@ namespace BedrockWorldEditor
         public PlayerEntryItem(string rawKey)
         {
             RawKey = rawKey;
-            DisplayName = rawKey.StartsWith("player_server_")
+            DisplayName = rawKey.StartsWith("player_server_", StringComparison.Ordinal)
                 ? "server_" + rawKey.Substring("player_server_".Length)
                 : rawKey;
         }
@@ -64,15 +64,15 @@ namespace BedrockWorldEditor
         private bool _suppressSelectionChange;
         private bool _suppressTreeEvents;
         private bool _suppressAccountWorldEvents;
+        private bool _isSaving;
         private ComboBoxItem? _previousAccountItem;
         private ListBoxItem? _previousWorldItem;
         private bool _rightClickHitValidNode;
         private bool _rightClickHitValidPlayer;
-        private byte[] _levelDatHeader = new byte[8];
+        private readonly byte[] _levelDatHeader = new byte[8];
         private string _currentSaveTarget = "";
 
-        // In-Memory Session Cache: Zero persistent file/folder locks!
-        // LevelDB and level.dat are read into memory and immediately closed so the world folder is never locked while editing!
+        // Lock-Free In-Memory Session Cache
         private readonly Dictionary<string, byte[]> _playerCache = new Dictionary<string, byte[]>();
         private readonly Dictionary<string, NbtFile> _openNbtFiles = new Dictionary<string, NbtFile>();
         private readonly HashSet<string> _modifiedTargets = new HashSet<string>();
@@ -81,16 +81,20 @@ namespace BedrockWorldEditor
         private readonly Dictionary<string, TargetViewState> _targetViewStates = new Dictionary<string, TargetViewState>();
         private const int MaxUndoSteps = 30;
 
-        // Active Inline Editor State (Double-Click to Edit Value or Rename Tag in-place, plus newly created tag naming)
+        // Active Inline Editor State
         private TreeViewItem? _inlineEditingTreeItem;
         private TextBox? _inlineEditingTextBox;
         private Button? _inlineEditingOkButton;
         private bool _inlineEditingIsRename;
         private string? _inlineEditingFallbackNewTagName;
+        private string _inlineEditingInitialText = "";
         private bool _isCommittingInlineEdit;
 
-        // UME Save / Error Overlay & Active Player Steve Icon Controls
-        private UniformGrid _activePlayerSteveIcon = null!;
+        // Context Menu & UME Save / Error Overlay Controls
+        private MenuItem _menuRenameItem = null!;
+        private MenuItem _menuEditValueItem = null!;
+        private Separator _menuRenameSepItem = null!;
+        private Image _activePlayerSteveIcon = null!;
         private Grid _saveModalOverlay = null!;
         private Border _savingProgressBox = null!;
         private Border _savingProgressBarFill = null!;
@@ -109,7 +113,7 @@ namespace BedrockWorldEditor
         private static readonly SolidColorBrush UmeModalErrorRedBrush = CreateFrozenBrush(220, 91, 87);
         private static readonly Thickness UnselectedFlagThickness = new Thickness(0);
         private static readonly Thickness SelectedFlagThickness = new Thickness(1);
-        private Style? _umeTreeViewItemStyle;
+        private readonly Style? _umeTreeViewItemStyle;
 
         // Cross-Player / Cross-World Multi-Tag NBT Clipboard
         private static readonly List<NbtTag> _nbtClipboard = new List<NbtTag>();
@@ -121,7 +125,7 @@ namespace BedrockWorldEditor
         private readonly string _cacheFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gamertag_cache.json");
         private Dictionary<string, string> _gamertagCache = new Dictionary<string, string>();
 
-        // 64 Exact Hex Colors for the 8x8 Steve Face Icon
+        // Single Shared Frozen 8x8 Steve Head ImageSource (Used across PlayerListBox & Active Target Indicator)
         private static readonly string[] SteveFaceHexPixels =
         {
             "#2E1F14","#2B1D12","#2F2015","#281B11","#24180F","#281B11","#2D1E13","#2A1C12",
@@ -134,11 +138,36 @@ namespace BedrockWorldEditor
             "#81553D","#7D523B","#442119","#411F17","#442119","#47231B","#83573E","#7A5039"
         };
 
+        public static readonly ImageSource SteveHeadImage = CreateSteveHeadDrawingImage();
+
         private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
         {
             var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
             brush.Freeze();
             return brush;
+        }
+
+        private static ImageSource CreateSteveHeadDrawingImage()
+        {
+            DrawingGroup group = new DrawingGroup();
+            RenderOptions.SetEdgeMode(group, EdgeMode.Aliased);
+
+            for (int i = 0; i < SteveFaceHexPixels.Length; i++)
+            {
+                int row = i / 8;
+                int col = i % 8;
+                Color c = (Color)ColorConverter.ConvertFromString(SteveFaceHexPixels[i]);
+                var rect = new RectangleGeometry(new Rect(col, row, 1, 1));
+                rect.Freeze();
+                var drawing = new GeometryDrawing(CreateFrozenBrush(c.R, c.G, c.B), null, rect);
+                drawing.Freeze();
+                group.Children.Add(drawing);
+            }
+
+            group.Freeze();
+            var image = new DrawingImage(group);
+            image.Freeze();
+            return image;
         }
 
         public MainWindow()
@@ -148,32 +177,59 @@ namespace BedrockWorldEditor
             InitializeSaveOverlayControls();
         }
 
-        private static UniformGrid CreateSteveHeadUniformGrid(double size)
-        {
-            var grid = new UniformGrid
-            {
-                Rows = 8,
-                Columns = 8,
-                Width = size,
-                Height = size,
-                Margin = new Thickness(0, 0, 6, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                SnapsToDevicePixels = true
-            };
-
-            foreach (string hex in SteveFaceHexPixels)
-            {
-                Color c = (Color)ColorConverter.ConvertFromString(hex);
-                grid.Children.Add(new Rectangle { Fill = CreateFrozenBrush(c.R, c.G, c.B) });
-            }
-
-            return grid;
-        }
-
         private void InitializeSaveOverlayControls()
         {
-            _activePlayerSteveIcon = CreateSteveHeadUniformGrid(14);
-            _activePlayerSteveIcon.Visibility = Visibility.Collapsed;
+            MenuItem? foundRename = NbtContextMenu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Header, "Rename"));
+            MenuItem? foundEditVal = NbtContextMenu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Header, "Edit Value"));
+
+            if (foundRename != null && foundEditVal != null)
+            {
+                _menuRenameItem = foundRename;
+                _menuEditValueItem = foundEditVal;
+                int editIdx = NbtContextMenu.Items.IndexOf(_menuEditValueItem);
+                _menuRenameSepItem = (editIdx + 1 < NbtContextMenu.Items.Count && NbtContextMenu.Items[editIdx + 1] is Separator sep)
+                    ? sep
+                    : new Separator();
+            }
+            else
+            {
+                _menuRenameItem = new MenuItem
+                {
+                    Header = "Rename",
+                    InputGestureText = "F2",
+                    Icon = new TextBlock { Text = "✏", FontSize = 12.5, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+                };
+                _menuRenameItem.Click += MenuRename_Click;
+
+                _menuEditValueItem = new MenuItem
+                {
+                    Header = "Edit Value",
+                    InputGestureText = "Double-Click",
+                    Icon = new TextBlock { Text = "📝", FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+                };
+                _menuEditValueItem.Click += MenuEditValue_Click;
+
+                _menuRenameSepItem = new Separator();
+
+                int insertIdx = NbtContextMenu.Items.IndexOf(MenuUndoSeparator);
+                int targetIdx = insertIdx >= 0 ? insertIdx + 1 : 0;
+                NbtContextMenu.Items.Insert(targetIdx, _menuRenameItem);
+                NbtContextMenu.Items.Insert(targetIdx + 1, _menuEditValueItem);
+                NbtContextMenu.Items.Insert(targetIdx + 2, _menuRenameSepItem);
+            }
+
+            _activePlayerSteveIcon = new Image
+            {
+                Width = 14,
+                Height = 14,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Source = SteveHeadImage,
+                SnapsToDevicePixels = true,
+                Visibility = Visibility.Collapsed
+            };
+            RenderOptions.SetBitmapScalingMode(_activePlayerSteveIcon, BitmapScalingMode.NearestNeighbor);
+
             if (TxtActiveIcon.Parent is Panel activeTargetPanel)
             {
                 activeTargetPanel.Children.Insert(0, _activePlayerSteveIcon);
@@ -188,7 +244,6 @@ namespace BedrockWorldEditor
             };
             Grid.SetRowSpan(_saveModalOverlay, 3);
 
-            // Box 1: UME "Saving / Please wait..."
             _savingProgressBox = new Border
             {
                 Width = 370,
@@ -253,7 +308,6 @@ namespace BedrockWorldEditor
             savingGrid.Children.Add(savingFooter);
             _savingProgressBox.Child = savingGrid;
 
-            // Box 2: UME Result Modal ("Save complete / The world has been saved." OR "Error / The world could not be saved!")
             _saveCompleteBox = new Border
             {
                 Width = 284,
@@ -325,7 +379,7 @@ namespace BedrockWorldEditor
             _saveModalOverlay.Children.Add(_savingProgressBox);
             _saveModalOverlay.Children.Add(_saveCompleteBox);
 
-            if (this.Content is Grid rootWindowGrid)
+            if (Content is Grid rootWindowGrid)
             {
                 rootWindowGrid.Children.Add(_saveModalOverlay);
             }
@@ -343,7 +397,6 @@ namespace BedrockWorldEditor
             }
             else
             {
-                // Matches your exact UME Error screenshot: Red top bar (#DC5B57), "Error" header, "The world could not be saved!" body
                 _saveCompleteTopBar.Background = UmeModalErrorRedBrush;
                 _saveCompleteTitleText.Text = "Error";
                 _saveCompleteBodyText.Text = customMessage ?? "The world could not be saved!";
@@ -354,7 +407,65 @@ namespace BedrockWorldEditor
             _btnSaveCompleteOk.Focus();
         }
 
-        // ==================== EXACT UME TAG TYPE ORDERING ====================
+        private void SetActiveTargetIndicator(string? targetText, bool isPlayer, bool isLevelDat)
+        {
+            _activePlayerSteveIcon.Visibility = isPlayer ? Visibility.Visible : Visibility.Collapsed;
+            TxtActiveIcon.Visibility = isLevelDat ? Visibility.Visible : Visibility.Collapsed;
+            if (isLevelDat) TxtActiveIcon.Text = "📄";
+            TxtActiveFile.Text = targetText ?? "";
+        }
+
+        // ==================== SHARED TREE & COMPOUND HELPERS ====================
+
+        private static DependencyObject? GetParentObject(DependencyObject current)
+        {
+            return (current is Run || current is TextElement)
+                ? LogicalTreeHelper.GetParent(current)
+                : VisualTreeHelper.GetParent(current);
+        }
+
+        private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+        {
+            while (current != null)
+            {
+                if (current is T match) return match;
+                current = GetParentObject(current);
+            }
+            return null;
+        }
+
+        private static DependencyObject? FindTreeMouseTarget(DependencyObject? current, bool stopAtToggleButton)
+        {
+            while (current != null &&
+                   current is not TreeViewItem &&
+                   current is not ScrollBar &&
+                   (!stopAtToggleButton || current is not ToggleButton))
+            {
+                current = GetParentObject(current);
+            }
+            return current;
+        }
+
+        private static void RenameTagInCompound(NbtTag tag, string newName, NbtCompound? parentCompound)
+        {
+            if (parentCompound != null)
+            {
+                var allTags = parentCompound.Tags.ToList();
+                parentCompound.Clear();
+                foreach (var child in allTags)
+                {
+                    if (ReferenceEquals(child, tag))
+                    {
+                        child.Name = newName;
+                    }
+                    parentCompound.Add(child);
+                }
+            }
+            else
+            {
+                tag.Name = newName;
+            }
+        }
 
         private static int GetUmeTagTypePriority(NbtTagType type)
         {
@@ -406,6 +517,25 @@ namespace BedrockWorldEditor
             }
         }
 
+        private void RestoreTreeScrollOffsets(double verticalOffset, double horizontalOffset)
+        {
+            NbtTreeView.UpdateLayout();
+            ScrollViewer? sv = GetTreeViewScrollViewer();
+            if (sv != null)
+            {
+                sv.ScrollToVerticalOffset(verticalOffset);
+                sv.ScrollToHorizontalOffset(horizontalOffset);
+                NbtStripeTransform.Y = -(verticalOffset % 44.0);
+
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                {
+                    sv.ScrollToVerticalOffset(verticalOffset);
+                    sv.ScrollToHorizontalOffset(horizontalOffset);
+                    NbtStripeTransform.Y = -(verticalOffset % 44.0);
+                }));
+            }
+        }
+
         private void SaveCurrentTargetViewState()
         {
             if (string.IsNullOrEmpty(_currentSaveTarget) || NbtTreeView.Items.Count == 0)
@@ -453,23 +583,7 @@ namespace BedrockWorldEditor
                 UpdateNbtTreeZebraStripes();
             }
 
-            NbtTreeView.UpdateLayout();
-            ScrollViewer? sv = GetTreeViewScrollViewer();
-            if (sv != null)
-            {
-                sv.ScrollToVerticalOffset(state.VerticalOffset);
-                sv.ScrollToHorizontalOffset(state.HorizontalOffset);
-                NbtStripeTransform.Y = -(state.VerticalOffset % 44.0);
-
-                double vOff = state.VerticalOffset;
-                double hOff = state.HorizontalOffset;
-                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
-                {
-                    sv.ScrollToVerticalOffset(vOff);
-                    sv.ScrollToHorizontalOffset(hOff);
-                    NbtStripeTransform.Y = -(vOff % 44.0);
-                }));
-            }
+            RestoreTreeScrollOffsets(state.VerticalOffset, state.HorizontalOffset);
         }
 
         private bool PromptSaveOrDiscardWorldChanges()
@@ -514,15 +628,17 @@ namespace BedrockWorldEditor
 
         private void BtnTogglePlayersSection_Click(object sender, RoutedEventArgs e)
         {
-            PlayerListContainerBorder.Visibility = PlayerListContainerBorder.Visibility == Visibility.Visible
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+            if (PlayerListBox.Parent is UIElement containerBorder)
+            {
+                containerBorder.Visibility = containerBorder.Visibility == Visibility.Visible
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            }
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             LoadGamertagCacheFromDisk();
-
             ComboAccounts.IsEnabled = false;
 
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -651,12 +767,13 @@ namespace BedrockWorldEditor
             {
                 try
                 {
-                    using var fs = new FileStream(optionsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    using var fs = new FileStream(optionsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     using var sr = new StreamReader(fs, Encoding.UTF8);
                     string? line;
                     while ((line = sr.ReadLine()) != null)
                     {
-                        if (line.StartsWith("mp_last_username:") || line.StartsWith("mp_username:"))
+                        if (line.StartsWith("mp_last_username:", StringComparison.OrdinalIgnoreCase) ||
+                            line.StartsWith("mp_username:", StringComparison.OrdinalIgnoreCase))
                         {
                             int idx = line.IndexOf(':');
                             if (idx >= 0)
@@ -665,7 +782,7 @@ namespace BedrockWorldEditor
                                 if (!string.IsNullOrEmpty(gt)) localGamertag = gt;
                             }
                         }
-                        else if (line.StartsWith("last_xuid:"))
+                        else if (line.StartsWith("last_xuid:", StringComparison.OrdinalIgnoreCase))
                         {
                             int idx = line.IndexOf(':');
                             if (idx >= 0)
@@ -745,7 +862,7 @@ namespace BedrockWorldEditor
 
         private async Task<string?> FetchGamertagOnlineAsync(string xuid)
         {
-            if (string.IsNullOrWhiteSpace(XblApiKey))
+            if (string.IsNullOrWhiteSpace(XblApiKey) || XblApiKey == "YOUR_OPENXBL_API_KEY_HERE")
                 return null;
 
             try
@@ -876,7 +993,7 @@ namespace BedrockWorldEditor
             item.Background = isDeepBlue ? UmeHoverDeepBlueBrush : UmeSelectedLightBlueBrush;
         }
 
-        // ==================== INLINE TAG VALUE EDITING & TAG RENAMING (WITH INLINE "OK" BUTTON & DYNAMIC RE-SORT!) ====================
+        // ==================== INLINE TAG VALUE EDITING & TAG RENAMING ====================
 
         private void BeginInlineEdit(TreeViewItem item, bool renameMode, string? fallbackNewTagName = null)
         {
@@ -932,6 +1049,7 @@ namespace BedrockWorldEditor
             if (renameMode)
             {
                 string initialText = fallbackNewTagName != null ? "" : (tag.Name ?? "");
+                _inlineEditingInitialText = initialText;
 
                 _inlineEditingTextBox = new TextBox
                 {
@@ -972,9 +1090,12 @@ namespace BedrockWorldEditor
                     });
                 }
 
+                string initialValText = GetSafeTagValueString(tag);
+                _inlineEditingInitialText = initialValText;
+
                 _inlineEditingTextBox = new TextBox
                 {
-                    Text = GetSafeTagValueString(tag),
+                    Text = initialValText,
                     MinWidth = 85,
                     Height = 19,
                     Padding = new Thickness(3, 0, 3, 0),
@@ -1036,11 +1157,13 @@ namespace BedrockWorldEditor
             TextBox textBox = _inlineEditingTextBox;
             bool isRename = _inlineEditingIsRename;
             string? fallbackNewName = _inlineEditingFallbackNewTagName;
+            string initialText = _inlineEditingInitialText;
 
             _inlineEditingTreeItem = null;
             _inlineEditingTextBox = null;
             _inlineEditingOkButton = null;
             _inlineEditingFallbackNewTagName = null;
+            _inlineEditingInitialText = "";
 
             try
             {
@@ -1071,7 +1194,7 @@ namespace BedrockWorldEditor
                                     parentTreeItem.Items.Remove(item);
                                     RefreshNodeHeader(parentTreeItem);
                                     UpdateNbtTreeZebraStripes();
-                                    SelectSingleTreeItem(parentTreeItem);
+                                    if (explicitConfirm) SelectSingleTreeItem(parentTreeItem);
                                 }
                                 return;
                             }
@@ -1086,17 +1209,7 @@ namespace BedrockWorldEditor
                                 }
 
                                 PushUndoSnapshot();
-
-                                var allTags = parentCompound.Tags.ToList();
-                                parentCompound.Clear();
-                                foreach (var child in allTags)
-                                {
-                                    if (ReferenceEquals(child, tag))
-                                    {
-                                        child.Name = finalName;
-                                    }
-                                    parentCompound.Add(child);
-                                }
+                                RenameTagInCompound(tag, finalName, parentCompound);
 
                                 MarkCurrentTargetModified();
                                 RefreshNodeHeader(item);
@@ -1110,7 +1223,7 @@ namespace BedrockWorldEditor
                                     item.IsExpanded = true;
                                 }
                                 UpdateNbtTreeZebraStripes();
-                                SelectSingleTreeItem(item);
+                                if (explicitConfirm) SelectSingleTreeItem(item);
                                 TxtStatusLeft.Text = $"Added {tag.TagType} tag '{finalName}' (Ctrl+Z to undo)";
                             }
                             return;
@@ -1129,24 +1242,7 @@ namespace BedrockWorldEditor
                             else
                             {
                                 PushUndoSnapshot();
-
-                                if (parentCompound != null)
-                                {
-                                    var allTags = parentCompound.Tags.ToList();
-                                    parentCompound.Clear();
-                                    foreach (var child in allTags)
-                                    {
-                                        if (ReferenceEquals(child, tag))
-                                        {
-                                            child.Name = enteredName;
-                                        }
-                                        parentCompound.Add(child);
-                                    }
-                                }
-                                else
-                                {
-                                    tag.Name = enteredName;
-                                }
+                                RenameTagInCompound(tag, enteredName, parentCompound);
 
                                 MarkCurrentTargetModified();
                                 RefreshNodeHeader(item);
@@ -1157,17 +1253,19 @@ namespace BedrockWorldEditor
                                 }
 
                                 UpdateNbtTreeZebraStripes();
-                                SelectSingleTreeItem(item);
-                                item.BringIntoView();
+                                if (explicitConfirm)
+                                {
+                                    SelectSingleTreeItem(item);
+                                    item.BringIntoView();
+                                }
                                 TxtStatusLeft.Text = $"Renamed tag '{oldName}' to '{enteredName}' (Ctrl+Z to undo)";
                                 return;
                             }
                         }
                     }
-                    else if (saveChanges)
+                    else if (saveChanges && !string.Equals(textBox.Text, initialText, StringComparison.Ordinal))
                     {
-                        string rawText = textBox.Text;
-                        if (TryApplyPrimitiveTagValue(tag, rawText))
+                        if (TryApplyPrimitiveTagValue(tag, textBox.Text))
                         {
                             if (ItemsControl.ItemsControlFromItemContainer(item) is TreeViewItem parentTreeItem)
                             {
@@ -1179,7 +1277,6 @@ namespace BedrockWorldEditor
                 }
 
                 RefreshNodeHeader(item);
-                UpdateValueEditorBar();
             }
             finally
             {
@@ -1227,10 +1324,15 @@ namespace BedrockWorldEditor
             }
         }
 
-        // ==================== 3-COLUMN UME HEX EDITOR DIALOG (FOR BOTH BYTEARRAY & INTARRAY TAGS!) ====================
+        // ==================== 3-COLUMN UME HEX EDITOR DIALOG ====================
 
         private bool OpenUmeHexEditorModal(NbtTag arrayTag, TreeViewItem? existingNode, bool isNewTag, NbtCompound? targetParentCompound = null)
         {
+            TreeViewItem? parentTreeItem = existingNode != null
+                ? ItemsControl.ItemsControlFromItemContainer(existingNode) as TreeViewItem
+                : null;
+            NbtCompound? existingParentCompound = targetParentCompound ?? (parentTreeItem?.Tag as NbtCompound) ?? (arrayTag.Parent as NbtCompound);
+
             Window hexWin = new Window
             {
                 Title = "Hex Editor",
@@ -1337,7 +1439,6 @@ namespace BedrockWorldEditor
             Grid.SetRow(editorBorder, 0);
             rootGrid.Children.Add(editorBorder);
 
-            // Bottom Bar: Name: [TextBox] [OK]
             StackPanel bottomBar = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -1363,7 +1464,7 @@ namespace BedrockWorldEditor
                 Padding = new Thickness(4, 0, 4, 0),
                 FontSize = 12.5,
                 Text = isNewTag ? "" : (arrayTag.Name ?? ""),
-                IsEnabled = targetParentCompound != null || !string.IsNullOrEmpty(arrayTag.Name)
+                IsEnabled = existingParentCompound != null || !string.IsNullOrEmpty(arrayTag.Name)
             };
 
             Button okBtn = new Button
@@ -1381,6 +1482,16 @@ namespace BedrockWorldEditor
                 {
                     MessageBox.Show("Invalid hex byte sequence. Use pairs of hex digits (e.g., 00 FF 1A).",
                                     "Hex Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                string enteredName = nameBox.Text.Trim();
+                if (!isNewTag && nameBox.IsEnabled && !string.IsNullOrEmpty(enteredName) &&
+                    !string.Equals(enteredName, arrayTag.Name, StringComparison.Ordinal) &&
+                    existingParentCompound != null && existingParentCompound.Contains(enteredName))
+                {
+                    MessageBox.Show($"A tag named '{enteredName}' already exists in this compound.",
+                                    "Duplicate Tag Name", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -1412,14 +1523,15 @@ namespace BedrockWorldEditor
 
                 if (nameBox.IsEnabled)
                 {
-                    string enteredName = nameBox.Text.Trim();
-                    if (!string.IsNullOrEmpty(enteredName))
+                    if (isNewTag)
                     {
-                        arrayTag.Name = enteredName;
+                        arrayTag.Name = !string.IsNullOrEmpty(enteredName)
+                            ? enteredName
+                            : (targetParentCompound != null ? GenerateUniqueTagName(targetParentCompound, $"New{arrayTag.TagType}") : $"New{arrayTag.TagType}");
                     }
-                    else if (isNewTag && targetParentCompound != null)
+                    else if (!string.IsNullOrEmpty(enteredName) && !string.Equals(enteredName, arrayTag.Name, StringComparison.Ordinal))
                     {
-                        arrayTag.Name = GenerateUniqueTagName(targetParentCompound, $"New{arrayTag.TagType}");
+                        RenameTagInCompound(arrayTag, enteredName, existingParentCompound);
                     }
                 }
 
@@ -1444,14 +1556,8 @@ namespace BedrockWorldEditor
             bool committed = hexWin.ShowDialog() == true;
             if (committed && existingNode != null)
             {
-                if (!isNewTag && targetParentCompound == null && ItemsControl.ItemsControlFromItemContainer(existingNode) is TreeViewItem parentTreeItem && parentTreeItem.Tag is NbtCompound parentComp)
+                if (!isNewTag && parentTreeItem != null && parentTreeItem.Tag is NbtCompound)
                 {
-                    var allTags = parentComp.Tags.ToList();
-                    parentComp.Clear();
-                    foreach (var child in allTags)
-                    {
-                        parentComp.Add(child);
-                    }
                     ResortChildTreeItems(parentTreeItem);
                 }
 
@@ -1551,10 +1657,6 @@ namespace BedrockWorldEditor
             _selectedTreeItem = null;
             _dragAnchorItem = null;
             _isDraggingSelection = false;
-            TxtSelectedTagName.Text = "Selected Value:";
-            TxtEditValue.Text = "";
-            TxtEditValue.IsEnabled = false;
-            BtnApply.IsEnabled = false;
         }
 
         private void SelectSingleTreeItem(TreeViewItem newItem)
@@ -1584,8 +1686,6 @@ namespace BedrockWorldEditor
                 newItem.IsSelected = true;
                 _suppressSelectionChange = false;
             }
-
-            UpdateValueEditorBar();
         }
 
         private void ToggleMultiSelectTreeItem(TreeViewItem clickedItem)
@@ -1623,8 +1723,6 @@ namespace BedrockWorldEditor
                 clickedItem.IsSelected = true;
                 _suppressSelectionChange = false;
             }
-
-            UpdateValueEditorBar();
         }
 
         private void RangeSelectTreeItems(TreeViewItem anchorItem, TreeViewItem targetItem)
@@ -1676,8 +1774,6 @@ namespace BedrockWorldEditor
                     _suppressSelectionChange = true;
                     resolvedTarget.IsSelected = true;
                     _suppressSelectionChange = false;
-
-                    UpdateValueEditorBar();
                     return;
                 }
             }
@@ -1747,35 +1843,7 @@ namespace BedrockWorldEditor
                 _selectedTreeItem.IsSelected = true;
                 _suppressSelectionChange = false;
 
-                UpdateValueEditorBar();
                 TxtStatusLeft.Text = $"Selected all {_multiSelectedItems.Count} tags (Ctrl+C to copy, Ctrl+X to cut, Del to delete)";
-            }
-        }
-
-        private void UpdateValueEditorBar()
-        {
-            if (_multiSelectedItems.Count > 1)
-            {
-                TxtSelectedTagName.Text = $"{_multiSelectedItems.Count} tags selected:";
-                TxtEditValue.Text = "";
-                TxtEditValue.IsEnabled = false;
-                BtnApply.IsEnabled = false;
-                return;
-            }
-
-            if (_selectedTag != null && IsPrimitiveEditableTag(_selectedTag.TagType))
-            {
-                TxtSelectedTagName.Text = $"{(string.IsNullOrEmpty(_selectedTag.Name) ? _selectedTag.TagType.ToString() : _selectedTag.Name)}:";
-                TxtEditValue.Text = GetSafeTagValueString(_selectedTag);
-                TxtEditValue.IsEnabled = true;
-                BtnApply.IsEnabled = true;
-            }
-            else
-            {
-                TxtSelectedTagName.Text = "Selected Value:";
-                TxtEditValue.Text = "";
-                TxtEditValue.IsEnabled = false;
-                BtnApply.IsEnabled = false;
             }
         }
 
@@ -1794,7 +1862,6 @@ namespace BedrockWorldEditor
         {
             if (tag is NbtList list)
             {
-                // UME Rich Summary Previews for Pos and Rotation lists!
                 if (string.Equals(list.Name, "Pos", StringComparison.Ordinal) && list.Count == 3 && list.ListType == NbtTagType.Float)
                 {
                     double x = Math.Round(list[0].FloatValue, 1);
@@ -1813,11 +1880,8 @@ namespace BedrockWorldEditor
 
             return tag switch
             {
-                // Strip trailing/embedded \r and \n so multi-line strings like FlatWorldLayers stay perfectly aligned on one line!
                 NbtString strTag => (strTag.Value ?? "").Replace("\r", "").Replace("\n", ""),
-                // In UME, Byte tags are displayed as signed 8-bit integers (-128..127), e.g., Sheared: -1!
                 NbtByte byteTag => ((sbyte)byteTag.Value).ToString(CultureInfo.InvariantCulture),
-                // In UME, extreme floats like 3.402823e+38 use lowercase 'g7' formatting!
                 NbtFloat floatTag => floatTag.Value.ToString("g7", CultureInfo.InvariantCulture),
                 NbtDouble doubleTag => doubleTag.Value.ToString("g15", CultureInfo.InvariantCulture),
                 NbtByteArray byteArr => byteArr.Value.Length == 1 ? "1 byte" : $"{byteArr.Value.Length} bytes",
@@ -1846,7 +1910,7 @@ namespace BedrockWorldEditor
             return "Straight";
         }
 
-        // ==================== TOP TOOLBAR: ADD NEW TAGS (EXACT UME INLINE NAMING & HEX EDITOR FOR BOTH 01 BUTTONS!) ====================
+        // ==================== TOP TOOLBAR: ADD NEW TAGS ====================
 
         private void BtnAddTag_Click(object sender, RoutedEventArgs e)
         {
@@ -1920,7 +1984,6 @@ namespace BedrockWorldEditor
             {
                 string fallbackName = GenerateUniqueTagName(targetCompound, $"New{tagType}");
 
-                // Both "01" buttons (ByteArray & IntArray) open the 3-column Hex Editor modal directly!
                 if (tagType == NbtTagType.ByteArray || tagType == NbtTagType.IntArray)
                 {
                     NbtTag newArrayTag = CreateDefaultNbtTag(tagType, fallbackName);
@@ -1960,7 +2023,6 @@ namespace BedrockWorldEditor
                     return;
                 }
 
-                // Insert temporary tag at top of container and open inline [TextBox] [OK] editor!
                 NbtTag newTag = CreateDefaultNbtTag(tagType, fallbackName);
                 targetCompound.Add(newTag);
 
@@ -2055,7 +2117,7 @@ namespace BedrockWorldEditor
             return depth;
         }
 
-        // ==================== ACCOUNT, WORLD & PLAYER MANAGEMENT (LOCK-FREE IN-MEMORY SESSION CACHE!) ====================
+        // ==================== ACCOUNT, WORLD & PLAYER MANAGEMENT ====================
 
         private void ResetWorldSessionState()
         {
@@ -2069,6 +2131,48 @@ namespace BedrockWorldEditor
             _targetUndoStacks.Clear();
             _targetViewStates.Clear();
             ClearActiveSelectionState();
+        }
+
+        private bool TryLoadLevelDatIntoMemory(out string? errorMessage)
+        {
+            errorMessage = null;
+            if (string.IsNullOrEmpty(_levelDatPath) || !File.Exists(_levelDatPath))
+            {
+                errorMessage = "level.dat not found.";
+                return false;
+            }
+
+            try
+            {
+                byte[] headerBuffer = new byte[8];
+                var levelNbt = new NbtFile { BigEndian = false };
+
+                using (FileStream fs = new FileStream(_levelDatPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    if (fs.Length < 8)
+                    {
+                        errorMessage = "level.dat is smaller than the required 8-byte Bedrock header.";
+                        return false;
+                    }
+
+                    fs.ReadExactly(headerBuffer, 0, 8);
+                    levelNbt.LoadFromStream(fs, NbtCompression.None, null);
+                }
+
+                if (levelNbt.RootTag != null)
+                {
+                    SanitizeEmptyListsRecursive(levelNbt.RootTag);
+                }
+
+                Buffer.BlockCopy(headerBuffer, 0, _levelDatHeader, 0, 8);
+                _openNbtFiles["level.dat"] = levelNbt;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
         private void ComboAccounts_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2099,16 +2203,13 @@ namespace BedrockWorldEditor
             BtnOpenFolder.IsEnabled = false;
             BtnSave.IsEnabled = false;
             BtnSaveBottom.IsEnabled = false;
-            _activePlayerSteveIcon.Visibility = Visibility.Collapsed;
-            TxtActiveIcon.Visibility = Visibility.Collapsed;
-            TxtActiveFile.Text = "";
+            SetActiveTargetIndicator(null, isPlayer: false, isLevelDat: false);
             TxtWorldTabTitle.Text = "No World Selected";
             TxtStatusPath.Text = "";
 
             if (ComboAccounts.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag is string accountPath)
             {
                 string worldsDir = Path.Combine(accountPath, "games", "com.mojang", "minecraftWorlds");
-
                 if (!Directory.Exists(worldsDir))
                 {
                     worldsDir = Path.Combine(accountPath, "minecraftWorlds");
@@ -2129,12 +2230,11 @@ namespace BedrockWorldEditor
                                 catch { }
                             }
 
-                            ListBoxItem worldItem = new ListBoxItem
+                            WorldListBox.Items.Add(new ListBoxItem
                             {
                                 Content = displayName,
                                 Tag = worldFolder
-                            };
-                            WorldListBox.Items.Add(worldItem);
+                            });
                         }
                     }
                     catch { }
@@ -2171,9 +2271,7 @@ namespace BedrockWorldEditor
                 _dbPath = Path.Combine(_worldFolderPath, "db");
 
                 TxtWorldTabTitle.Text = $"{selectedWorld.Content}";
-                _activePlayerSteveIcon.Visibility = Visibility.Collapsed;
-                TxtActiveIcon.Visibility = Visibility.Collapsed;
-                TxtActiveFile.Text = "";
+                SetActiveTargetIndicator(null, isPlayer: false, isLevelDat: false);
                 TxtStatusPath.Text = _worldFolderPath.Replace('\\', '/');
                 BtnLevelDat.IsEnabled = File.Exists(_levelDatPath);
                 BtnOpenFolder.IsEnabled = Directory.Exists(_worldFolderPath);
@@ -2213,51 +2311,25 @@ namespace BedrockWorldEditor
 
             SaveCurrentTargetViewState();
 
-            try
+            if (!_openNbtFiles.TryGetValue("level.dat", out NbtFile? nbt))
             {
-                // Pre-loaded in memory when the world was selected, or read & immediately close on demand!
-                if (!_openNbtFiles.TryGetValue("level.dat", out NbtFile? nbt))
+                if (!TryLoadLevelDatIntoMemory(out string? err) || !_openNbtFiles.TryGetValue("level.dat", out nbt))
                 {
-                    if (!File.Exists(_levelDatPath))
-                        throw new FileNotFoundException("level.dat not found.");
-
-                    byte[] headerBuffer = new byte[8];
-                    nbt = new NbtFile
-                    {
-                        BigEndian = false
-                    };
-
-                    using (FileStream fs = new FileStream(_levelDatPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-                    {
-                        if (fs.Length < 8)
-                            throw new InvalidDataException("level.dat is smaller than the required 8-byte Bedrock header.");
-
-                        fs.ReadExactly(headerBuffer, 0, 8);
-                        nbt.LoadFromStream(fs, NbtCompression.None, null);
-                    }
-
-                    Buffer.BlockCopy(headerBuffer, 0, _levelDatHeader, 0, 8);
-                    _openNbtFiles["level.dat"] = nbt;
+                    MessageBox.Show("Error reading level.dat: " + err, "Read Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
                 }
-
-                _activeNbtFile = nbt;
-                _currentSaveTarget = "level.dat";
-                PlayerListBox.SelectedItems.Clear();
-
-                _activePlayerSteveIcon.Visibility = Visibility.Collapsed;
-                TxtActiveIcon.Visibility = Visibility.Visible;
-                TxtActiveIcon.Text = "📄";
-                TxtActiveFile.Text = "level.dat";
-                TxtStatusLeft.Text = "Editing World Settings (level.dat)";
-                RenderNbtTree(TxtSearch.Text);
-                RestoreTargetViewStateIfAvailable("level.dat");
-                BtnSave.IsEnabled = true;
-                BtnSaveBottom.IsEnabled = true;
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error reading level.dat: " + ex.Message, "Read Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+
+            _activeNbtFile = nbt;
+            _currentSaveTarget = "level.dat";
+            PlayerListBox.SelectedItems.Clear();
+
+            SetActiveTargetIndicator("level.dat", isPlayer: false, isLevelDat: true);
+            TxtStatusLeft.Text = "Editing World Settings (level.dat)";
+            RenderNbtTree(TxtSearch.Text);
+            RestoreTargetViewStateIfAvailable("level.dat");
+            BtnSave.IsEnabled = true;
+            BtnSaveBottom.IsEnabled = true;
         }
 
         private void LoadPlayersFromDatabase()
@@ -2265,35 +2337,12 @@ namespace BedrockWorldEditor
             PlayerListBox.Items.Clear();
             _playerCache.Clear();
 
-            // Pre-load level.dat into memory right away (with FileShare.Delete) so even if the folder is modified later, level.dat is ready in RAM!
-            if (!string.IsNullOrEmpty(_levelDatPath) && File.Exists(_levelDatPath))
-            {
-                try
-                {
-                    byte[] headerBuffer = new byte[8];
-                    var levelNbt = new NbtFile { BigEndian = false };
-                    using (FileStream fs = new FileStream(_levelDatPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-                    {
-                        if (fs.Length >= 8)
-                        {
-                            fs.ReadExactly(headerBuffer, 0, 8);
-                            levelNbt.LoadFromStream(fs, NbtCompression.None, null);
-                            Buffer.BlockCopy(headerBuffer, 0, _levelDatHeader, 0, 8);
-                            _openNbtFiles["level.dat"] = levelNbt;
-                        }
-                    }
-                }
-                catch
-                {
-                    // Ignore pre-cache error; will retry if user clicks World Settings
-                }
-            }
+            TryLoadLevelDatIntoMemory(out _);
 
             if (_dbPath == null || !Directory.Exists(_dbPath)) return;
 
             try
             {
-                // Open LevelDB ONLY for the few milliseconds needed to read player entries into RAM, then immediately dispose & release all locks!
                 using (var db = NativeLevelDb.Open(_dbPath))
                 {
                     foreach (var kvp in db.GetAllPlayerEntries()
@@ -2339,20 +2388,19 @@ namespace BedrockWorldEditor
                     if (!_playerCache.TryGetValue(selectedPlayer, out byte[]? playerData) || playerData.Length == 0)
                         return;
 
-                    nbt = new NbtFile
-                    {
-                        BigEndian = false
-                    };
+                    nbt = new NbtFile { BigEndian = false };
                     nbt.LoadFromBuffer(playerData, 0, playerData.Length, NbtCompression.None, null);
+                    if (nbt.RootTag != null)
+                    {
+                        SanitizeEmptyListsRecursive(nbt.RootTag);
+                    }
                     _openNbtFiles[selectedPlayer] = nbt;
                 }
 
                 _activeNbtFile = nbt;
                 _currentSaveTarget = selectedPlayer;
 
-                _activePlayerSteveIcon.Visibility = Visibility.Visible;
-                TxtActiveIcon.Visibility = Visibility.Collapsed;
-                TxtActiveFile.Text = $"db/{selectedEntry.DisplayName}";
+                SetActiveTargetIndicator($"db/{selectedEntry.DisplayName}", isPlayer: true, isLevelDat: false);
                 TxtStatusLeft.Text = PlayerListBox.SelectedItems.Count > 1
                     ? $"Selected {PlayerListBox.SelectedItems.Count} players (Viewing: {selectedEntry.DisplayName})"
                     : $"Editing Player: {selectedEntry.DisplayName}";
@@ -2369,17 +2417,13 @@ namespace BedrockWorldEditor
             }
         }
 
-        // ==================== PLAYER LIST RIGHT-CLICK DELETE (STAGED UNTIL SAVE!) ====================
+        // ==================== PLAYER LIST RIGHT-CLICK DELETE ====================
 
         private void PlayerListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            DependencyObject? source = e.OriginalSource as DependencyObject;
-            while (source != null && source is not ListBoxItem)
-            {
-                source = VisualTreeHelper.GetParent(source);
-            }
+            ListBoxItem? targetItem = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
 
-            if (source is ListBoxItem targetItem)
+            if (targetItem != null)
             {
                 if (_rightClickedPlayerItem != null && _rightClickedPlayerItem != targetItem)
                 {
@@ -2462,9 +2506,7 @@ namespace BedrockWorldEditor
                 _currentSaveTarget = "";
                 ClearActiveSelectionState();
                 NbtTreeView.Items.Clear();
-                _activePlayerSteveIcon.Visibility = Visibility.Collapsed;
-                TxtActiveIcon.Visibility = Visibility.Collapsed;
-                TxtActiveFile.Text = "";
+                SetActiveTargetIndicator(null, isPlayer: false, isLevelDat: false);
             }
 
             TxtStatusLeft.Text = toDelete.Count == 1
@@ -2480,11 +2522,13 @@ namespace BedrockWorldEditor
             }
         }
 
-        // ==================== UNDO (CTRL+Z) SYSTEM (PER-TARGET WITH VIEWPORT SCROLL LOCK!) ====================
+        // ==================== UNDO (CTRL+Z) SYSTEM ====================
 
         private void PushUndoSnapshot()
         {
             if (_activeNbtFile?.RootTag == null) return;
+
+            SanitizeEmptyListsRecursive(_activeNbtFile.RootTag);
 
             var stack = CurrentUndoStack;
             if (stack.Count >= MaxUndoSteps)
@@ -2549,23 +2593,7 @@ namespace BedrockWorldEditor
             }
 
             UpdateNbtTreeZebraStripes();
-
-            // Restore exact scroll position so the user never loses their place in the tree!
-            NbtTreeView.UpdateLayout();
-            sv = GetTreeViewScrollViewer();
-            if (sv != null)
-            {
-                sv.ScrollToVerticalOffset(savedVerticalOffset);
-                sv.ScrollToHorizontalOffset(savedHorizontalOffset);
-                NbtStripeTransform.Y = -(savedVerticalOffset % 44.0);
-
-                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
-                {
-                    sv.ScrollToVerticalOffset(savedVerticalOffset);
-                    sv.ScrollToHorizontalOffset(savedHorizontalOffset);
-                    NbtStripeTransform.Y = -(savedVerticalOffset % 44.0);
-                }));
-            }
+            RestoreTreeScrollOffsets(savedVerticalOffset, savedHorizontalOffset);
 
             TxtStatusLeft.Text = $"Undid last change ({stack.Count} undo step(s) remaining)";
         }
@@ -2638,11 +2666,13 @@ namespace BedrockWorldEditor
 
         private void RenderNbtTree(string filterText = "")
         {
+            CommitInlineEdit(saveChanges: true);
+
             _suppressTreeEvents = true;
             try
             {
-                NbtTreeView.Items.Clear();
                 ClearActiveSelectionState();
+                NbtTreeView.Items.Clear();
 
                 if (_activeNbtFile?.RootTag != null)
                 {
@@ -2752,21 +2782,11 @@ namespace BedrockWorldEditor
                 {
                     if (ReferenceEquals(check, _inlineEditingTextBox) || ReferenceEquals(check, _inlineEditingOkButton))
                         return;
-                    if (check is Run || check is TextElement)
-                        check = LogicalTreeHelper.GetParent(check);
-                    else
-                        check = VisualTreeHelper.GetParent(check);
+                    check = GetParentObject(check);
                 }
             }
 
-            DependencyObject? source = orig;
-            while (source != null && source is not TreeViewItem && source is not ToggleButton && source is not ScrollBar)
-            {
-                if (source is Run || source is TextElement)
-                    source = LogicalTreeHelper.GetParent(source);
-                else
-                    source = VisualTreeHelper.GetParent(source);
-            }
+            DependencyObject? source = FindTreeMouseTarget(orig, stopAtToggleButton: true);
 
             if (source is ToggleButton || source is ScrollBar)
             {
@@ -2792,9 +2812,7 @@ namespace BedrockWorldEditor
                                 clickedOnNamePart = true;
                                 break;
                             }
-                            walk = (walk is Run || walk is TextElement)
-                                ? LogicalTreeHelper.GetParent(walk)
-                                : VisualTreeHelper.GetParent(walk);
+                            walk = GetParentObject(walk);
                         }
 
                         ItemsControl? parentCtrl = ItemsControl.ItemsControlFromItemContainer(targetItem);
@@ -2858,15 +2876,7 @@ namespace BedrockWorldEditor
                 return;
             }
 
-            DependencyObject? source = e.OriginalSource as DependencyObject;
-            while (source != null && source is not TreeViewItem && source is not ScrollBar)
-            {
-                if (source is Run || source is TextElement)
-                    source = LogicalTreeHelper.GetParent(source);
-                else
-                    source = VisualTreeHelper.GetParent(source);
-            }
-
+            DependencyObject? source = FindTreeMouseTarget(e.OriginalSource as DependencyObject, stopAtToggleButton: false);
             if (source is ScrollBar) return;
 
             if (source is TreeViewItem hoveredItem && hoveredItem != _selectedTreeItem)
@@ -2884,14 +2894,7 @@ namespace BedrockWorldEditor
         {
             _isDraggingSelection = false;
 
-            DependencyObject? source = e.OriginalSource as DependencyObject;
-            while (source != null && source is not TreeViewItem && source is not ScrollBar)
-            {
-                if (source is Run || source is TextElement)
-                    source = LogicalTreeHelper.GetParent(source);
-                else
-                    source = VisualTreeHelper.GetParent(source);
-            }
+            DependencyObject? source = FindTreeMouseTarget(e.OriginalSource as DependencyObject, stopAtToggleButton: false);
 
             if (_inlineEditingTreeItem != null)
             {
@@ -2985,9 +2988,9 @@ namespace BedrockWorldEditor
 
             bool canRename = !isMulti && !isRoot && !isInsideList && !string.IsNullOrEmpty(_selectedTag.Name);
             bool canEditValue = !isMulti && (IsPrimitiveEditableTag(_selectedTag.TagType) || _selectedTag.TagType == NbtTagType.ByteArray || _selectedTag.TagType == NbtTagType.IntArray);
-            MenuRename.Visibility = canRename ? Visibility.Visible : Visibility.Collapsed;
-            MenuEditValue.Visibility = canEditValue ? Visibility.Visible : Visibility.Collapsed;
-            MenuRenameSeparator.Visibility = (canRename || canEditValue) ? Visibility.Visible : Visibility.Collapsed;
+            _menuRenameItem.Visibility = canRename ? Visibility.Visible : Visibility.Collapsed;
+            _menuEditValueItem.Visibility = canEditValue ? Visibility.Visible : Visibility.Collapsed;
+            _menuRenameSepItem.Visibility = (canRename || canEditValue) ? Visibility.Visible : Visibility.Collapsed;
 
             MenuCut.Visibility = Visibility.Visible;
             MenuCopy.Visibility = Visibility.Visible;
@@ -3002,7 +3005,7 @@ namespace BedrockWorldEditor
                 MenuPaste.IsEnabled = hasClipboard;
             }
             else if (pasteContainerTag is NbtList targetList &&
-                     (targetList.Count == 0 || (hasClipboard && (targetList.ListType == NbtTagType.Unknown || targetList.ListType == _nbtClipboard[0].TagType || _nbtClipboard[0] is NbtList))))
+                     (targetList.Count == 0 || (hasClipboard && (targetList.ListType == NbtTagType.Unknown || targetList.ListType == _nbtClipboard[0].TagType || (_nbtClipboard.Count == 1 && _nbtClipboard[0] is NbtList)))))
             {
                 MenuPaste.Visibility = Visibility.Visible;
                 MenuPaste.IsEnabled = hasClipboard;
@@ -3139,6 +3142,7 @@ namespace BedrockWorldEditor
             {
                 if (item.Tag is NbtTag tag)
                 {
+                    SanitizeEmptyListsRecursive(tag);
                     _nbtClipboard.Add((NbtTag)tag.Clone());
                 }
             }
@@ -3310,14 +3314,10 @@ namespace BedrockWorldEditor
                     }
                     else if (targetContainerTag is NbtList targetList)
                     {
-                        if (_nbtClipboard.Count == 1 && _nbtClipboard[0] is NbtList sourceList &&
-                            (targetList.ListType == sourceList.ListType || targetList.Count == 0))
+                        if (_nbtClipboard.Count == 1 && _nbtClipboard[0] is NbtList sourceList)
                         {
                             targetList.Clear();
-                            if (sourceList.ListType != NbtTagType.Unknown)
-                            {
-                                targetList.ListType = sourceList.ListType;
-                            }
+                            targetList.ListType = sourceList.ListType != NbtTagType.Unknown ? sourceList.ListType : NbtTagType.Byte;
                             targetContainerItem.Items.Clear();
 
                             foreach (NbtTag item in sourceList)
@@ -3531,7 +3531,7 @@ namespace BedrockWorldEditor
             TxtStatusLeft.Text = $"Moved list entry {(direction < 0 ? "up" : "down")} (Ctrl+Z to undo)";
         }
 
-        // ==================== AUTHENTIC UME NODE HEADER STYLING (FOLDED DOCUMENT BADGES, SERIF TT, 3-DOT LIST) ====================
+        // ==================== AUTHENTIC UME NODE HEADER STYLING ====================
 
         private static Grid CreateUmeFoldedDocumentBadge(UIElement badgeLabel)
         {
@@ -3790,14 +3790,6 @@ namespace BedrockWorldEditor
             }
         }
 
-        private void TxtEditValue_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter && BtnApply.IsEnabled)
-            {
-                BtnApply_Click(sender, e);
-            }
-        }
-
         private static bool TryParseByteOrSByte(string input, out byte result)
         {
             if (sbyte.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out sbyte signedVal))
@@ -3895,26 +3887,6 @@ namespace BedrockWorldEditor
             return false;
         }
 
-        private void BtnApply_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedTag == null) return;
-
-            if (TryApplyPrimitiveTagValue(_selectedTag, TxtEditValue.Text))
-            {
-                if (_selectedTreeItem != null)
-                {
-                    RefreshNodeHeader(_selectedTreeItem);
-                    if (ItemsControl.ItemsControlFromItemContainer(_selectedTreeItem) is TreeViewItem parentTreeItem)
-                    {
-                        RefreshNodeHeader(parentTreeItem);
-                    }
-                }
-
-                string displayName = string.IsNullOrEmpty(_selectedTag.Name) ? _selectedTag.TagType.ToString() : _selectedTag.Name;
-                TxtStatusLeft.Text = $"Updated '{displayName}' to {GetSafeTagValueString(_selectedTag)} (Ctrl+Z to undo, Ctrl+S to save)";
-            }
-        }
-
         private static void SanitizeEmptyListsRecursive(NbtTag tag)
         {
             if (tag is NbtCompound compound)
@@ -3940,7 +3912,7 @@ namespace BedrockWorldEditor
             }
         }
 
-        // ==================== LOCK-FREE SAVE ALL + UME SAVING PROGRESS & SAVE COMPLETE / ERROR MODALS ====================
+        // ==================== LOCK-FREE SAVE ALL + UME MODALS ====================
 
         private bool CommitAllWorldChangesToDiskSynchronously()
         {
@@ -3956,7 +3928,6 @@ namespace BedrockWorldEditor
                     if (string.IsNullOrEmpty(_dbPath) || !Directory.Exists(_dbPath))
                         return false;
 
-                    // Open LevelDB ONLY for the few milliseconds needed to write/delete modified player entries, then immediately close & unlock!
                     using (var db = NativeLevelDb.Open(_dbPath))
                     {
                         foreach (string deletedKey in _deletedPlayers.ToList())
@@ -4014,6 +3985,8 @@ namespace BedrockWorldEditor
 
         private async void BtnSave_Click(object sender, RoutedEventArgs e)
         {
+            if (_isSaving) return;
+
             CommitInlineEdit(saveChanges: true);
 
             if (string.IsNullOrEmpty(_worldFolderPath)) return;
@@ -4021,9 +3994,9 @@ namespace BedrockWorldEditor
             if (_activeNbtFile?.RootTag != null && !string.IsNullOrEmpty(_currentSaveTarget))
             {
                 _openNbtFiles[_currentSaveTarget] = _activeNbtFile;
-                _modifiedTargets.Add(_currentSaveTarget);
             }
 
+            _isSaving = true;
             try
             {
                 _saveCompleteBox.Visibility = Visibility.Collapsed;
@@ -4058,6 +4031,10 @@ namespace BedrockWorldEditor
             {
                 ShowUmeSaveResultModal(isSuccess: false);
                 TxtStatusLeft.Text = "Error: The world could not be saved!";
+            }
+            finally
+            {
+                _isSaving = false;
             }
         }
 
@@ -4160,7 +4137,7 @@ namespace BedrockWorldEditor
                 {
                     try
                     {
-                        string errMsg = Marshal.PtrToStringAnsi(errPtr) ?? "Unknown LevelDB open error";
+                        string errMsg = Marshal.PtrToStringUTF8(errPtr) ?? "Unknown LevelDB open error";
                         throw new Exception(errMsg);
                     }
                     finally
@@ -4203,7 +4180,7 @@ namespace BedrockWorldEditor
                     Marshal.Copy(keyPtr, keyBytes, 0, keyLength);
 
                     string key = Encoding.UTF8.GetString(keyBytes);
-                    if (key == "~local_player" || key.StartsWith("player_server_"))
+                    if (key == "~local_player" || key.StartsWith("player_server_", StringComparison.Ordinal))
                     {
                         IntPtr valPtr = leveldb_iter_value(iter, out IntPtr vlen);
                         int valLength = (int)vlen;
@@ -4243,7 +4220,7 @@ namespace BedrockWorldEditor
                 {
                     try
                     {
-                        string errMsg = Marshal.PtrToStringAnsi(errPtr) ?? "Unknown LevelDB write error";
+                        string errMsg = Marshal.PtrToStringUTF8(errPtr) ?? "Unknown LevelDB write error";
                         throw new Exception(errMsg);
                     }
                     finally
@@ -4273,7 +4250,7 @@ namespace BedrockWorldEditor
                 {
                     try
                     {
-                        string errMsg = Marshal.PtrToStringAnsi(errPtr) ?? "Unknown LevelDB delete error";
+                        string errMsg = Marshal.PtrToStringUTF8(errPtr) ?? "Unknown LevelDB delete error";
                         throw new Exception(errMsg);
                     }
                     finally

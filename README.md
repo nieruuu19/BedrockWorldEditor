@@ -63,4 +63,4 @@ A fast, lock-free **Minecraft: Bedrock Edition** NBT & LevelDB world editor for 
 ### Building & Running
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/](https://github.com/)nieruuu19/BedrockWorldEditor.git
+   git clone [https://github.com/nieruuu19/BedrockWorldEditor.git](https://github.com/nieruuu19/BedrockWorldEditor.git)

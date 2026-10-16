@@ -33,7 +33,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeView">
-                        <ScrollViewer Padding="0" Margin="0" Focusable="False" Background="Transparent"
+                        <ScrollViewer x:Name="PART_ScrollViewer" Padding="0" Margin="0" Focusable="False" Background="Transparent"
                                       HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
                                       VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
                             <ItemsPresenter Margin="0"/>
@@ -73,16 +73,81 @@
             </Setter>
         </Style>
 
-        <!-- NBT Toolbar Badge Style -->
-        <Style x:Key="NbtBadgeBorder" TargetType="Border">
-            <Setter Property="Width" Value="22"/>
+        <!-- Interactive NBT Toolbar Badge Button Style (Folded Document Icon Look) -->
+        <Style x:Key="NbtBadgeButton" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
             <Setter Property="Height" Value="24"/>
-            <Setter Property="Margin" Value="3,0"/>
-            <Setter Property="CornerRadius" Value="2"/>
-            <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#B0B8C0"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
             <Setter Property="ToolTipService.InitialShowDelay" Value="150"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BadgeHoverBorder"
+                                CornerRadius="2"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <Grid Width="16" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <!-- Folded Document Page Shape -->
+                                <Path Data="M 0.5,0.5 L 11.5,0.5 L 15.5,4.5 L 15.5,17.5 L 0.5,17.5 Z"
+                                      Fill="#FFFFFF" Stroke="#8A949E" StrokeThickness="1"/>
+                                <Path Data="M 11.5,0.5 L 11.5,4.5 L 15.5,4.5"
+                                      Fill="#E4E7EB" Stroke="#8A949E" StrokeThickness="1"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,1.5"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BadgeHoverBorder" Property="Background" Value="#CBE4F9"/>
+                                <Setter TargetName="BadgeHoverBorder" Property="BorderBrush" Value="#5B9BD5"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="BadgeHoverBorder" Property="Background" Value="#8CC3F2"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Interactive NBT Toolbar Icon Button Style (For TT, List, Compound) -->
+        <Style x:Key="NbtIconToolbarButton" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="ToolTipService.InitialShowDelay" Value="150"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="IconBorder"
+                                CornerRadius="2"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="IconBorder" Property="Background" Value="#CBE4F9"/>
+                                <Setter TargetName="IconBorder" Property="BorderBrush" Value="#5B9BD5"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="IconBorder" Property="Background" Value="#8CC3F2"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- UME 22px ListBoxItem Style for Worlds & Players -->
@@ -329,15 +394,15 @@
                             </Grid.ColumnDefinitions>
 
                             <Button x:Name="BtnSave" Grid.Column="0" Click="BtnSave_Click" IsEnabled="False"
-                                    ToolTip="Save Changes (Ctrl+S)" Background="#2B3138" BorderBrush="#4C5663" BorderThickness="1"
+                                    ToolTip="Save All World Changes (Ctrl+S)" Background="#2B3138" BorderBrush="#4C5663" BorderThickness="1"
                                     Cursor="Hand" Margin="0,0,6,0">
                                 <TextBlock Text="💾" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Button>
 
                             <Border Grid.Column="1" Background="#282E35" BorderBrush="#454F5B" BorderThickness="1" CornerRadius="2" Padding="8,0">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TxtActiveIcon" Text="📦" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="TxtActiveFile" Text="No file selected" Foreground="#E4E7EB" 
+                                    <TextBlock x:Name="TxtActiveIcon" Text="📄" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#CBD2D9"/>
+                                    <TextBlock x:Name="TxtActiveFile" Text="" Foreground="#E4E7EB" 
                                                FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </Border>
@@ -384,14 +449,17 @@
                         </Border>
                     </DockPanel>
 
-                    <!-- Row 2: Players List -->
+                    <!-- Row 2: Players List (With 8x8 Pixel-Accurate Steve Head Icon!) -->
                     <DockPanel Grid.Row="2" Margin="12,6,12,8">
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
-                            <TextBlock Text="👤" Foreground="#CBD2D9" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Players" Foreground="#E4E7EB" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <Button DockPanel.Dock="Top" Style="{StaticResource UmeNavButton}" Padding="0" Height="26" Margin="0,0,0,4"
+                                Click="BtnTogglePlayersSection_Click" ToolTip="Click to expand/collapse Players list">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="👤" Foreground="#CBD2D9" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Players" Foreground="#E4E7EB" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
 
-                        <Border BorderBrush="#1E2328" BorderThickness="1" ClipToBounds="True">
+                        <Border x:Name="PlayerListContainerBorder" BorderBrush="#1E2328" BorderThickness="1" ClipToBounds="True">
                             <Border.Background>
                                 <DrawingBrush Viewport="0,0,1,44" ViewportUnits="Absolute" TileMode="Tile">
                                     <DrawingBrush.Transform>
@@ -437,16 +505,81 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Border Width="15" Height="15" Background="#B5845B" BorderBrush="#3B2716" BorderThickness="1" Margin="0,0,7,0" VerticalAlignment="Center">
-                                                <Grid>
-                                                    <Rectangle Fill="#4A311C" Height="4.5" VerticalAlignment="Top"/>
-                                                    <Rectangle Fill="#FFFFFF" Width="3" Height="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="2,1,0,0"/>
-                                                    <Rectangle Fill="#4B3A96" Width="2" Height="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,1,0,0"/>
-                                                    <Rectangle Fill="#FFFFFF" Width="3" Height="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,2,0"/>
-                                                    <Rectangle Fill="#4B3A96" Width="2" Height="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,2,0"/>
-                                                    <Rectangle Fill="#7A4930" Width="4" Height="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,1.5"/>
-                                                </Grid>
-                                            </Border>
+                                            <!-- Exact 8x8 Pixel-Accurate Steve Face from Reference Image -->
+                                            <UniformGrid Rows="8" Columns="8" Width="15" Height="15" Margin="0,0,7,0" VerticalAlignment="Center" SnapsToDevicePixels="True">
+                                                <!-- Row 0 (Top Hair) -->
+                                                <Rectangle Fill="#2E1F14"/>
+                                                <Rectangle Fill="#2B1D12"/>
+                                                <Rectangle Fill="#2F2015"/>
+                                                <Rectangle Fill="#281B11"/>
+                                                <Rectangle Fill="#24180F"/>
+                                                <Rectangle Fill="#281B11"/>
+                                                <Rectangle Fill="#2D1E13"/>
+                                                <Rectangle Fill="#2A1C12"/>
+                                                <!-- Row 1 (Lower Hair) -->
+                                                <Rectangle Fill="#2A1C12"/>
+                                                <Rectangle Fill="#2F2015"/>
+                                                <Rectangle Fill="#2F2015"/>
+                                                <Rectangle Fill="#332317"/>
+                                                <Rectangle Fill="#422C1D"/>
+                                                <Rectangle Fill="#3A271A"/>
+                                                <Rectangle Fill="#2C1D13"/>
+                                                <Rectangle Fill="#261910"/>
+                                                <!-- Row 2 (Sideburns + Forehead) -->
+                                                <Rectangle Fill="#2D1E13"/>
+                                                <Rectangle Fill="#B6896C"/>
+                                                <Rectangle Fill="#BD8E70"/>
+                                                <Rectangle Fill="#C29375"/>
+                                                <Rectangle Fill="#B88A6C"/>
+                                                <Rectangle Fill="#BD8E70"/>
+                                                <Rectangle Fill="#AC7E61"/>
+                                                <Rectangle Fill="#342317"/>
+                                                <!-- Row 3 (Upper Forehead / Brow) -->
+                                                <Rectangle Fill="#AA7D60"/>
+                                                <Rectangle Fill="#B58668"/>
+                                                <Rectangle Fill="#B7886A"/>
+                                                <Rectangle Fill="#B28466"/>
+                                                <Rectangle Fill="#AD8063"/>
+                                                <Rectangle Fill="#B68769"/>
+                                                <Rectangle Fill="#A5775B"/>
+                                                <Rectangle Fill="#9C7055"/>
+                                                <!-- Row 4 (Eyes: White Sclera + #23199B Blue Pupils + Nose Bridge) -->
+                                                <Rectangle Fill="#B48668"/>
+                                                <Rectangle Fill="#FFFFFF"/>
+                                                <Rectangle Fill="#23199B"/>
+                                                <Rectangle Fill="#B58668"/>
+                                                <Rectangle Fill="#BB8C6E"/>
+                                                <Rectangle Fill="#23199B"/>
+                                                <Rectangle Fill="#FFFFFF"/>
+                                                <Rectangle Fill="#AA7D60"/>
+                                                <!-- Row 5 (Cheeks + Darker Nose Tip) -->
+                                                <Rectangle Fill="#9C6F54"/>
+                                                <Rectangle Fill="#B38366"/>
+                                                <Rectangle Fill="#B7896C"/>
+                                                <Rectangle Fill="#6A4030"/>
+                                                <Rectangle Fill="#653D2E"/>
+                                                <Rectangle Fill="#B88A6C"/>
+                                                <Rectangle Fill="#A27458"/>
+                                                <Rectangle Fill="#8E634A"/>
+                                                <!-- Row 6 (Cheeks + Upper Beard/Mouth) -->
+                                                <Rectangle Fill="#906349"/>
+                                                <Rectangle Fill="#96674C"/>
+                                                <Rectangle Fill="#46221A"/>
+                                                <Rectangle Fill="#84493A"/>
+                                                <Rectangle Fill="#84493A"/>
+                                                <Rectangle Fill="#46221A"/>
+                                                <Rectangle Fill="#8F6147"/>
+                                                <Rectangle Fill="#80553E"/>
+                                                <!-- Row 7 (Chin + Lower Beard) -->
+                                                <Rectangle Fill="#81553D"/>
+                                                <Rectangle Fill="#7D523B"/>
+                                                <Rectangle Fill="#442119"/>
+                                                <Rectangle Fill="#411F17"/>
+                                                <Rectangle Fill="#442119"/>
+                                                <Rectangle Fill="#47231B"/>
+                                                <Rectangle Fill="#83573E"/>
+                                                <Rectangle Fill="#7A5039"/>
+                                            </UniformGrid>
                                             <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" Foreground="#111111"/>
                                         </StackPanel>
                                     </DataTemplate>
@@ -461,7 +594,7 @@
                         <Button x:Name="BtnLevelDat" Style="{StaticResource UmeNavButton}" Click="BtnLevelDat_Click" IsEnabled="False">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⚙" FontSize="15" Width="26" VerticalAlignment="Center" Foreground="#9AA5B1"/>
-                                <TextBlock Text="World Settings (level.dat)" VerticalAlignment="Center"/>
+                                <TextBlock Text="World Settings" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="BtnOpenFolder" Style="{StaticResource UmeNavButton}" Click="BtnOpenFolder_Click" IsEnabled="False">
@@ -475,7 +608,7 @@
                     <!-- Row 4: UME Bottom Blue Action Button -->
                     <Button x:Name="BtnSaveBottom" Grid.Row="4" Click="BtnSave_Click" IsEnabled="False"
                             Background="#1967B2" Foreground="White" FontWeight="SemiBold" FontSize="14"
-                            BorderThickness="0" Cursor="Hand" Content="Save Active File">
+                            BorderThickness="0" Cursor="Hand" Content="Save World">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Template">
@@ -507,10 +640,10 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="44"/>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="44"/>
+                    <RowDefinition Height="0"/>
                 </Grid.RowDefinitions>
 
-                <!-- Row 0: UME Light Gray NBT Toolbar -->
+                <!-- Row 0: UME Light Gray NBT Toolbar (With Folded Document Badges, Serif TT, 3-Dot List & 3D Compound!) -->
                 <Border Grid.Row="0" Background="#EAECEF" BorderBrush="#D0D5DC" BorderThickness="0,0,0,1" Padding="10,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -520,30 +653,60 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Byte Tag">
-                                <TextBlock Text="B" Foreground="#D64545" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Short Tag">
-                                <TextBlock Text="S" Foreground="#27AE60" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Int Tag">
-                                <TextBlock Text="I" Foreground="#2980B9" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Long Tag">
-                                <TextBlock Text="L" Foreground="#8E44AD" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Float Tag">
-                                <TextBlock Text="F" Foreground="#9B59B6" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="Double Tag">
-                                <TextBlock Text="D" Foreground="#16A085" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <Border Style="{StaticResource NbtBadgeBorder}" ToolTip="ByteArray / IntArray Tag">
-                                <TextBlock Text="01" Foreground="#52606D" FontWeight="Bold" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <TextBlock Text="TT" Foreground="#616E7C" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" Margin="8,0,6,0" ToolTip="String Tag"/>
-                            <TextBlock Text="☰" Foreground="#616E7C" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="6,0" ToolTip="List Tag"/>
-                            <TextBlock Text="📦" FontSize="14" VerticalAlignment="Center" Margin="6,0" ToolTip="Compound Tag"/>
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="Byte" Click="BtnAddTag_Click" ToolTip="Add Byte Tag">
+                                <TextBlock Text="B" Foreground="#D64545" FontWeight="Bold" FontSize="9.5"/>
+                            </Button>
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="Short" Click="BtnAddTag_Click" ToolTip="Add Short Tag">
+                                <TextBlock Text="S" Foreground="#27AE60" FontWeight="Bold" FontSize="9.5"/>
+                            </Button>
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="Int" Click="BtnAddTag_Click" ToolTip="Add Int Tag">
+                                <TextBlock Text="I" Foreground="#2980B9" FontWeight="Bold" FontSize="9.5"/>
+                            </Button>
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="Long" Click="BtnAddTag_Click" ToolTip="Add Long Tag">
+                                <TextBlock Text="L" Foreground="#8E44AD" FontWeight="Bold" FontSize="9.5"/>
+                            </Button>
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="Float" Click="BtnAddTag_Click" ToolTip="Add Float Tag">
+                                <TextBlock Text="F" Foreground="#9B59B6" FontWeight="Bold" FontSize="9.5"/>
+                            </Button>
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="Double" Click="BtnAddTag_Click" ToolTip="Add Double Tag">
+                                <TextBlock Text="D" Foreground="#16A085" FontWeight="Bold" FontSize="9.5"/>
+                            </Button>
+                            <!-- UME Red/Dark 01 ByteArray Button -->
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="ByteArray" Click="BtnAddTag_Click" ToolTip="Add ByteArray Tag (Opens Hex Editor)">
+                                <TextBlock FontWeight="Bold" FontSize="8.5">
+                                    <Run Text="0" Foreground="#D64545"/><Run Text="1" Foreground="#222831"/>
+                                </TextBlock>
+                            </Button>
+                            <!-- UME Blue/Dark 01 IntArray Button -->
+                            <Button Style="{StaticResource NbtBadgeButton}" Tag="IntArray" Click="BtnAddTag_Click" ToolTip="Add IntArray Tag (Opens Hex Editor)">
+                                <TextBlock FontWeight="Bold" FontSize="8.5">
+                                    <Run Text="0" Foreground="#2980B9"/><Run Text="1" Foreground="#222831"/>
+                                </TextBlock>
+                            </Button>
+                            <!-- UME Serif T + Smaller T String Button -->
+                            <Button Style="{StaticResource NbtIconToolbarButton}" Tag="String" Click="BtnAddTag_Click" ToolTip="Add String Tag">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="T" FontFamily="Georgia" FontWeight="Bold" FontSize="13.5" Foreground="#3E4C59" VerticalAlignment="Bottom"/>
+                                    <TextBlock Text="T" FontFamily="Georgia" FontWeight="Bold" FontSize="9.5" Foreground="#3E4C59" VerticalAlignment="Bottom" Margin="0.5,0,0,0.5"/>
+                                </StackPanel>
+                            </Button>
+                            <!-- UME 3-Bullet + 3-Bar List Button -->
+                            <Button Style="{StaticResource NbtIconToolbarButton}" Tag="List" Click="BtnAddTag_Click" ToolTip="Add List Tag">
+                                <Canvas Width="14" Height="12" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <Rectangle Canvas.Left="0" Canvas.Top="1" Width="2" Height="2" Fill="#3E4C59"/>
+                                    <Rectangle Canvas.Left="4" Canvas.Top="1" Width="10" Height="2" Fill="#3E4C59"/>
+                                    <Rectangle Canvas.Left="0" Canvas.Top="5" Width="2" Height="2" Fill="#3E4C59"/>
+                                    <Rectangle Canvas.Left="4" Canvas.Top="5" Width="10" Height="2" Fill="#3E4C59"/>
+                                    <Rectangle Canvas.Left="0" Canvas.Top="9" Width="2" Height="2" Fill="#3E4C59"/>
+                                    <Rectangle Canvas.Left="4" Canvas.Top="9" Width="10" Height="2" Fill="#3E4C59"/>
+                                </Canvas>
+                            </Button>
+                            <!-- UME Cardboard Package Compound Button -->
+                            <Button Style="{StaticResource NbtIconToolbarButton}" Tag="Compound" Click="BtnAddTag_Click" ToolTip="Add Compound Tag">
+                                <Border Width="15" Height="15" CornerRadius="2" Background="#D49B5E" BorderBrush="#8C5C2C" BorderThickness="1">
+                                    <Rectangle Width="4" Height="6" Fill="#F5E2C4" VerticalAlignment="Top" HorizontalAlignment="Center"/>
+                                </Border>
+                            </Button>
                         </StackPanel>
 
                         <!-- Search / Filter Box -->
@@ -574,7 +737,7 @@
                     </Grid>
                 </Border>
 
-                <!-- Row 1: Scroll-Synced Zebra Backdrop + Item-Backed TreeView -->
+                <!-- Row 1: Scroll-Synced Zebra Backdrop + Full-Height UME TreeView -->
                 <Grid Grid.Row="1" ClipToBounds="True">
                     <Grid.Background>
                         <DrawingBrush Viewport="0,0,1,44" ViewportUnits="Absolute" TileMode="Tile">
@@ -622,6 +785,17 @@
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator x:Name="MenuUndoSeparator"/>
+                                <MenuItem x:Name="MenuRename" Header="Rename" InputGestureText="F2" Click="MenuRename_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="✏" FontSize="12.5" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MenuEditValue" Header="Edit Value" InputGestureText="Double-Click" Click="MenuEditValue_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="📝" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator x:Name="MenuRenameSeparator"/>
                                 <MenuItem x:Name="MenuCut" Header="Cut" InputGestureText="Ctrl+X" Click="MenuCut_Click">
                                     <MenuItem.Icon>
                                         <TextBlock Text="✂" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -663,25 +837,12 @@
                     </TreeView>
                 </Grid>
 
-                <!-- Row 2: Value Edit Bar -->
-                <Border Grid.Row="2" Background="#F5F7FA" BorderBrush="#D8E2EC" BorderThickness="0,1,0,0" Padding="12,0">
+                <!-- Row 2: Hidden Legacy Edit Bar (Collapsed so NBT Tree gets full UME height!) -->
+                <Border Grid.Row="2" Visibility="Collapsed">
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock x:Name="TxtSelectedTagName" Grid.Column="0" Text="Selected Value:" Foreground="#3E4C59"
-                                   FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,10,0"/>
-
-                        <TextBox x:Name="TxtEditValue" Grid.Column="1" Height="28" VerticalContentAlignment="Center"
-                                 Padding="6,0" FontSize="12.5" BorderBrush="#CBD2D9" IsEnabled="False"
-                                 KeyDown="TxtEditValue_KeyDown"/>
-
-                        <Button x:Name="BtnApply" Grid.Column="2" Content="Apply Change" Width="110" Height="28" Margin="10,0,0,0"
-                                Background="#2AB573" Foreground="White" FontWeight="SemiBold" BorderThickness="0"
-                                Cursor="Hand" IsEnabled="False" Click="BtnApply_Click"/>
+                        <TextBlock x:Name="TxtSelectedTagName"/>
+                        <TextBox x:Name="TxtEditValue" KeyDown="TxtEditValue_KeyDown"/>
+                        <Button x:Name="BtnApply" Click="BtnApply_Click"/>
                     </Grid>
                 </Border>
             </Grid>
